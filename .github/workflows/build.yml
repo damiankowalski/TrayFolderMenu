@@ -1,0 +1,91 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build with the .NET Framework 4.8 compiler
+        shell: cmd
+        run: call build.cmd
+
+      - name: Read version from source
+        id: version
+        shell: pwsh
+        run: |
+          $source = Get-Content src/TrayFolderMenu.cs -Raw
+          if ($source -notmatch 'AssemblyFileVersion\("(\d+)\.(\d+)\.(\d+)\.\d+"\)') {
+            throw 'AssemblyFileVersion not found in src/TrayFolderMenu.cs'
+          }
+          $version = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match AssemblyFileVersion $version"
+          }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$version"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $package = "TrayFolderMenu-$version-win"
+          $staging = "dist/$package"
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item -Path dist/TrayFolderMenu.exe, README.md, LICENSE, CHANGELOG.md -Destination $staging
+          Compress-Archive -Path "$staging/*" -DestinationPath "dist/$package.zip" -Force
+          Remove-Item $staging -Recurse -Force
+          $sums = Get-ChildItem dist -File | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+          }
+          Set-Content -Path dist/SHA256SUMS.txt -Value $sums -Encoding ascii
+          Get-Content dist/SHA256SUMS.txt
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: TrayFolderMenu-${{ steps.version.outputs.version }}
+          path: dist/*
+
+      - name: Release notes from CHANGELOG
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $lines = Get-Content CHANGELOG.md -Encoding utf8
+          $header = $lines | Select-String -Pattern ('^## \[' + [regex]::Escape($version) + '\]') | Select-Object -First 1
+          if (-not $header) { throw "CHANGELOG.md has no section for $version" }
+          $body = @()
+          for ($i = $header.LineNumber; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^## ' -or $lines[$i] -match '^\[[^\]]+\]: ') { break }
+            $body += $lines[$i]
+          }
+          $notes = @(
+            ($body -join "`n").Trim()
+            ''
+            '---'
+            ''
+            '**Download** `TrayFolderMenu.exe` (or the `.zip` package) below. Requires Windows 10 1903+ or Windows 11.'
+            'The executable is not code-signed: SmartScreen may ask for confirmation on first launch.'
+            'Verify the download against `SHA256SUMS.txt`. Upgrading? Run the new version with `/install` – settings are kept.'
+          )
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = (Get-ChildItem dist -File).FullName
+          gh release create $env:GITHUB_REF_NAME $assets --title "TrayFolderMenu $env:GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag

@@ -1,0 +1,16 @@
+# Build output
+dist/
+*.exe
+*.pdb
+
+# Packaging
+*.zip
+*.intunewin
+release-notes.md
+
+# Editors and OS
+.vs/
+.vscode/
+*.suo
+*.user
+Thumbs.db
