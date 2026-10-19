@@ -10,7 +10,7 @@ straightforward to deploy with Microsoft Intune, Configuration Manager or a sign
 3. Creates a Start menu shortcut and an *Installed apps* entry
    (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TrayFolderMenu`).
 4. Registers autostart: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `TrayFolderMenu` = `"…\TrayFolderMenu.exe" /autostart`.
-5. Adds the folder passed with `/folder:` to the user's configuration (optional).
+5. Adds the folder passed with `/folder:` and the language passed with `/language:` to the user's configuration (optional).
 6. Starts the app – silently in the tray with `/quiet`, otherwise with the settings window open.
 
 No service, driver, scheduled task, `HKLM` key or `Program Files` folder is involved.
@@ -21,6 +21,7 @@ No service, driver, scheduled task, `HKLM` key or `Program Files` folder is invo
 |---|---|
 | `TrayFolderMenu.exe /install /quiet` | Silent per-user install |
 | `TrayFolderMenu.exe /install /quiet /folder:"%USERPROFILE%\Menu"` | Silent install with a preset menu folder |
+| `TrayFolderMenu.exe /install /quiet /language:en` | Silent install with the interface language set (`en` or `pl`) |
 | `TrayFolderMenu.exe /uninstall /quiet` | Silent uninstall; user settings are kept |
 | `TrayFolderMenu.exe /exit` | Closes the running instance |
 
@@ -47,7 +48,7 @@ Environment variables in `/folder:` are expanded by the application itself, so t
 
 | Setting | Value |
 |---|---|
-| Install command | `TrayFolderMenu.exe /install /quiet` (optionally `/folder:"%USERPROFILE%\Menu"`) |
+| Install command | `TrayFolderMenu.exe /install /quiet` (optionally `/folder:"%USERPROFILE%\Menu"` and `/language:en`) |
 | Uninstall command | `TrayFolderMenu.exe /uninstall /quiet` |
 | Install behavior | **User** |
 | Device restart behavior | No specific action |
@@ -61,7 +62,7 @@ Environment variables in `/folder:` are expanded by the application itself, so t
 | Rule type | Registry |
 | Key path | `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\TrayFolderMenu` |
 | Value name | `DisplayVersion` |
-| Detection method | String comparison → Equals → `1.1.0` (the version being deployed) |
+| Detection method | String comparison → Equals → `1.2.0` (the version being deployed) |
 | Associated with a 32-bit app on 64-bit clients | No |
 
 > [!NOTE]
@@ -84,15 +85,22 @@ closes the running instance, replaces the executable and keeps the user's settin
     ],
     "HotkeyEnabled": true,
     "Hotkey": "Ctrl+Shift+A",
-    "KeepMenuOpen": false
+    "KeepMenuOpen": false,
+    "Language": "en"
   }
   ```
 
-  Paths may use environment variables. Missing fields fall back to defaults; an unreadable file is backed up as
+  Paths may use environment variables. `Language` is `"en"` or `"pl"`; omit it to follow the Windows display language. Missing fields fall back to defaults; an unreadable file is backed up as
   `config.json.bad` and replaced with defaults.
 
 - **Central shortcut management:** point the menu to a network share (`\\server\share\Menu`). Every change in the share is visible
   the next time a user opens the menu.
+
+## Language-neutral data
+
+The interface language affects only what users see. Everything the app persists is identical in every language: configuration keys
+and values (`config.json`), registry entries, the Start menu shortcut and the log, which is always written in English. A configuration
+prepared in one language therefore works unchanged for users of the other.
 
 ## Application control and security notes
 

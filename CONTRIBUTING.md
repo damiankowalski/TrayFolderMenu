@@ -27,12 +27,14 @@ The output is `dist\TrayFolderMenu.exe`.
 - **Zero dependencies.** Only assemblies that are part of .NET Framework 4.8.
 - **One source file** (`src/TrayFolderMenu.cs`) by design – it keeps the project easy to audit and to build anywhere.
 - **No network access** and no telemetry.
-- User interface strings are currently Polish; keep new strings consistent until localization lands.
+- **Every user-facing string lives in the `Strings` class** and must be added to both `Lang.En` and `Lang.Pl`, with the same
+  `{0}`-style placeholders.
+- **Persisted data is English only** – log messages, configuration keys and registry values must not depend on the UI language.
 
 ## Pull requests
 
 1. Keep changes focused; one topic per pull request.
-2. Test on Windows 10 or 11, ideally in both light and dark mode.
+2. Test on Windows 10 or 11, ideally in both light and dark mode and in both languages.
 3. Add a line to the `[Unreleased]` section of [CHANGELOG.md](CHANGELOG.md).
 4. The CI build must pass.
 

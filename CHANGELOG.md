@@ -6,6 +6,21 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-19
+
+### Added
+
+- English user interface. A language selector – the globe button in the top-right corner of the settings window – switches
+  between English and Polish instantly, without restarting. By default the app follows the Windows display language.
+- `Language` setting in `config.json` (`"en"` or `"pl"`) and a `/language:en|pl` switch for `/install`.
+- GitHub link in the settings window; the *Installed apps* entry links to the project page.
+
+### Changed
+
+- Everything the app writes is now English regardless of the interface language: log messages, the Start menu shortcut
+  description and the file description. Configuration keys and registry values were already language-neutral and are unchanged,
+  so existing settings keep working.
+
 ## [1.1.0] - 2026-10-18
 
 ### Added
@@ -32,5 +47,6 @@ First internal version (not published as a release).
 - Per-user installation with autostart, a Start menu shortcut and an *Installed apps* entry; silent `/install` and `/uninstall`.
 - JSON configuration in `%APPDATA%\TrayFolderMenu` and a rotating log in `%LOCALAPPDATA%\TrayFolderMenu`.
 
-[Unreleased]: https://github.com/damiankowalski/TrayFolderMenu/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/damiankowalski/TrayFolderMenu/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/damiankowalski/TrayFolderMenu/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/damiankowalski/TrayFolderMenu/releases/tag/v1.1.0

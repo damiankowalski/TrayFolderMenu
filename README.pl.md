@@ -31,6 +31,8 @@ wskazujesz folder, a jego ikona w zasobniku staje się tym menu. Folder z dawneg
 - **Globalny skrót** – <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> (do zmiany) otwiera menu przy kursorze myszy.
 - **Kilka pozycji z jednego otwarcia** – menu może zostawać otwarte po kliknięciu; <kbd>Ctrl</kbd>+klik odwraca to zachowanie
   dla pojedynczego kliknięcia.
+- **Po polsku i po angielsku** – język zmienisz w locie przyciskiem z globusem w oknie ustawień; domyślnie program
+  używa języka Windows.
 - **Natywny wygląd** – menu w stylu Windows 11 z zaokrąglonymi rogami, jasny i ciemny motyw zgodny z systemem, ikony
   i sortowanie jak w Eksploratorze.
 - **Bez uprawnień administratora i zależności** – jeden plik exe (~100&nbsp;KB) na wbudowanym w Windows .NET Framework 4.8.
@@ -65,6 +67,7 @@ Wolisz skompilować sam? Zobacz [Kompilacja](#kompilacja).
 3. Opcjonalnie kliknij **Zainstaluj dla bieżącego użytkownika**. Program skopiuje się do
    `%LOCALAPPDATA%\Programs\TrayFolderMenu`, będzie startował po zalogowaniu i pojawi się w menu Start oraz na liście aplikacji.
    Bez instalacji działa jako wersja przenośna.
+4. Język zmienisz przyciskiem z globusem (**Polski ▾**) w prawym górnym rogu okna ustawień.
 
 > [!TIP]
 > Windows 11 może schować nową ikonę pod strzałką **^** w zasobniku. Przeciągnij ją na pasek zadań albo włącz w
@@ -86,7 +89,8 @@ są wyświetlane bez rozszerzeń. Pliki ukryte, w tym `desktop.ini`, są pomijan
 
 ## Ustawienia
 
-Okno ustawień ma cztery sekcje: **Foldery menu**, **Zachowanie menu**, **Skrót klawiszowy** oraz **Uruchamianie i instalacja**.
+Okno ustawień ma przełącznik języka (globus w prawym górnym rogu) i cztery sekcje: **Foldery menu**, **Zachowanie menu**,
+**Skrót klawiszowy** oraz **Uruchamianie i instalacja**.
 Ustawienia są zapisywane w `%APPDATA%\TrayFolderMenu\config.json` – plik można też edytować ręcznie lub wdrażać:
 
 ```json
@@ -96,9 +100,13 @@ Ustawienia są zapisywane w `%APPDATA%\TrayFolderMenu\config.json` – plik moż
   ],
   "HotkeyEnabled": true,
   "Hotkey": "Ctrl+Shift+A",
-  "KeepMenuOpen": false
+  "KeepMenuOpen": false,
+  "Language": "pl"
 }
 ```
+
+`Language` przyjmuje `"en"` lub `"pl"`; bez tego klucza program używa języka Windows. Format konfiguracji, wpisy w rejestrze
+i log są takie same – po angielsku – niezależnie od języka interfejsu, więc zmiana języka nigdy nie zmienia sposobu zapisu ustawień.
 
 ## Przełączniki wiersza poleceń
 
@@ -106,7 +114,7 @@ Ustawienia są zapisywane w `%APPDATA%\TrayFolderMenu\config.json` – plik moż
 |---|---|
 | *(brak)* | Uruchamia program i otwiera ustawienia (gdy już działa – pokazuje jego okno) |
 | `/autostart` | Uruchamia po cichu w zasobniku – używane przez autostart |
-| `/install [/quiet] [/folder:"C:\Menu"]` | Instaluje dla bieżącego użytkownika, włącza autostart i uruchamia program |
+| `/install [/quiet] [/folder:"C:\Menu"] [/language:en\|pl]` | Instaluje dla bieżącego użytkownika, włącza autostart i uruchamia program |
 | `/uninstall [/quiet]` | Dezinstaluje (bez `/quiet` pyta o usunięcie ustawień) |
 | `/exit` | Zamyka działającą instancję |
 | `/?` | Pokazuje pomoc |
@@ -117,7 +125,7 @@ Ustawienia są zapisywane w `%APPDATA%\TrayFolderMenu\config.json` – plik moż
 |---|---|
 | `%LOCALAPPDATA%\Programs\TrayFolderMenu\TrayFolderMenu.exe` | Zainstalowany program |
 | `%APPDATA%\TrayFolderMenu\config.json` | Ustawienia |
-| `%LOCALAPPDATA%\TrayFolderMenu\log.txt` | Log (rotacja przy 1&nbsp;MB) |
+| `%LOCALAPPDATA%\TrayFolderMenu\log.txt` | Log po angielsku (rotacja przy 1&nbsp;MB) |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `TrayFolderMenu` | Autostart |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TrayFolderMenu` | Wpis na liście aplikacji |
 

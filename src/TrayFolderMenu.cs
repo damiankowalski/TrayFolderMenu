@@ -5,7 +5,7 @@
 // Przełączniki wiersza poleceń:
 //   (brak)                          uruchamia aplikację i otwiera okno ustawień
 //   /autostart                      uruchamia po cichu w zasobniku (tak startuje autostart)
-//   /install [/quiet] [/folder:X]   instalacja dla bieżącego użytkownika + autostart + start
+//   /install [/quiet] [/folder:X] [/language:en|pl]   instalacja dla bieżącego użytkownika + autostart + start
 //   /uninstall [/quiet]             dezinstalacja
 //   /exit                           zamyka działającą instancję
 
@@ -15,6 +15,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -27,10 +28,10 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 
 [assembly: AssemblyTitle("TrayFolderMenu")]
-[assembly: AssemblyDescription("Kaskadowe menu skrótów w zasobniku")]
+[assembly: AssemblyDescription("Cascading folder menus in the Windows system tray")]
 [assembly: AssemblyProduct("TrayFolderMenu")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 [assembly: ComVisible(false)]
 
 namespace TrayFolderMenu
@@ -43,6 +44,7 @@ namespace TrayFolderMenu
         public const string MutexName = @"Local\TrayFolderMenu.Instance";
         public const string ShowEventName = @"Local\TrayFolderMenu.Show";
         public const string ExitEventName = @"Local\TrayFolderMenu.Exit";
+        public const string ProjectUrl = "https://github.com/damiankowalski/TrayFolderMenu";
 
         static Mutex instanceMutex;
 
@@ -59,7 +61,7 @@ namespace TrayFolderMenu
         static int Main(string[] args)
         {
             bool quiet = false, install = false, uninstall = false, exit = false, autostart = false, help = false;
-            string folder = null;
+            string folder = null, language = null;
             foreach (string raw in args)
             {
                 string a = raw.Trim();
@@ -70,6 +72,7 @@ namespace TrayFolderMenu
                 else if (l == "/exit") exit = true;
                 else if (l == "/autostart") autostart = true;
                 else if (l.StartsWith("/folder:")) folder = a.Substring(8).Trim().Trim('"');
+                else if (l.StartsWith("/language:")) language = a.Substring(10).Trim().Trim('"');
                 else if (l == "/?" || l == "/help" || l == "-h" || l == "--help") help = true;
             }
 
@@ -77,12 +80,15 @@ namespace TrayFolderMenu
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-            Application.ThreadException += (s, e) => Log.Error("nieobsłużony wyjątek", e.Exception);
-            AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Write("KRYTYCZNY BŁĄD: " + e.ExceptionObject);
+            Application.ThreadException += (s, e) => Log.Error("unhandled exception", e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => Log.Write("FATAL: " + e.ExceptionObject);
+
+            // język okien dialogowych: przełącznik /language, potem konfiguracja, potem język systemu
+            Lang.Set(Lang.Normalize(language) ?? AppConfig.Load().Language);
 
             if (help) { ShowHelp(); return 0; }
             if (uninstall) return Installer.Uninstall(quiet);
-            if (install) return Installer.Install(quiet, folder);
+            if (install) return Installer.Install(quiet, folder, language);
             if (exit) { SignalEvent(ExitEventName); return 0; }
 
             if (!TryAcquireInstance(0))
@@ -144,16 +150,8 @@ namespace TrayFolderMenu
 
         static void ShowHelp()
         {
-            MessageBox.Show(
-                "TrayFolderMenu " + Version + "\n\n" +
-                "(brak)\t\turuchamia i otwiera ustawienia\n" +
-                "/autostart\turuchamia po cichu w zasobniku\n" +
-                "/install\t\tinstaluje dla bieżącego użytkownika\n" +
-                "/uninstall\tdezinstaluje\n" +
-                "/quiet\t\tbez okienek (z /install i /uninstall)\n" +
-                "/folder:\"C:\\Menu\"\tdodaje folder (z /install)\n" +
-                "/exit\t\tzamyka działającą instancję",
-                "TrayFolderMenu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(string.Format(Lang.T.HelpText, Version), "TrayFolderMenu",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 
@@ -234,7 +232,220 @@ namespace TrayFolderMenu
 
         public static void Error(string context, Exception ex)
         {
-            Write("BŁĄD (" + context + "): " + ex.GetType().Name + ": " + ex.Message);
+            Write("ERROR (" + context + "): " + ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    // =========================================================================
+    // Lokalizacja interfejsu. Wszystko, co trafia na dysk (config.json, rejestr, log,
+    // skrót w menu Start), jest zawsze po angielsku - niezależnie od języka interfejsu.
+    // =========================================================================
+    sealed class Strings
+    {
+        public string Code, LanguageName, LanguageTooltip, HelpText;
+        public string InstallCannotClose, InstallFailed, UninstallAskRemoveData, UninstallFailed;
+        public string MenuFolderMissing, MenuAccessDenied, MenuEmpty, FallbackTrayText;
+        public string AdminSettings, AdminOpenFolder, AdminKeepOpen, AdminAutostart, AdminExit;
+        public string HotkeyInvalid, HotkeyTaken, HotkeyBalloonTitle, LaunchFailedTitle, SaveConfigFailed;
+        public string HotkeyNeedsModifier, HotkeyPressPrompt;
+        public string SettingsWindowTitle, Subtitle, FoldersTitle, FoldersHint, FolderMissingSuffix;
+        public string Add, Remove, Open, PickFolderTitle;
+        public string MenuBehaviorTitle, KeepOpenCheck, KeepOpenHint;
+        public string HotkeyTitle, HotkeyCheck, RestoreHotkey, HotkeyDisabled, HotkeyHint, HotkeyRecording;
+        public string HotkeySaved, HotkeySavedAltGr, HotkeyRestored;
+        public string StartupTitle, AutostartCheck, LocationInstalled, LocationPortableWithInstalled, LocationPortable;
+        public string Uninstall, UpdateInstall, Install;
+        public string LinkLog, LinkConfig, QuitApp, Done, AutostartFailed, ConfirmUninstall, LogEmpty;
+    }
+
+    static class Lang
+    {
+        public static readonly Strings En = new Strings
+        {
+            Code = "en",
+            LanguageName = "English",
+            LanguageTooltip = "Language",
+            HelpText = "TrayFolderMenu {0}\n\n" +
+                       "(none)\t\tstarts the app and opens the settings\n" +
+                       "/autostart\tstarts silently in the tray\n" +
+                       "/install\t\tinstalls for the current user\n" +
+                       "/uninstall\tuninstalls\n" +
+                       "/quiet\t\tno dialogs (with /install and /uninstall)\n" +
+                       "/folder:\"C:\\Menu\"\tadds a folder (with /install)\n" +
+                       "/language:en|pl\tsets the language (with /install)\n" +
+                       "/exit\t\tcloses the running instance",
+            InstallCannotClose = "Could not close the running instance of TrayFolderMenu.",
+            InstallFailed = "Installation failed:\n{0}",
+            UninstallAskRemoveData = "TrayFolderMenu will be uninstalled.\n\nAlso remove the settings and the log?\n{0}\n{1}",
+            UninstallFailed = "Uninstallation failed:\n{0}",
+            MenuFolderMissing = "(folder not found)",
+            MenuAccessDenied = "(access denied)",
+            MenuEmpty = "(empty)",
+            FallbackTrayText = "TrayFolderMenu – click to add a folder",
+            AdminSettings = "Settings…",
+            AdminOpenFolder = "Open folder in Explorer",
+            AdminKeepOpen = "Keep menu open after click",
+            AdminAutostart = "Run at sign-in",
+            AdminExit = "Exit TrayFolderMenu",
+            HotkeyInvalid = "Invalid hotkey in the configuration: {0}",
+            HotkeyTaken = "The hotkey {0} is already used by another app or by Windows.",
+            HotkeyBalloonTitle = "Hotkey",
+            LaunchFailedTitle = "Cannot start",
+            SaveConfigFailed = "Could not save the settings:\n{0}",
+            HotkeyNeedsModifier = "Add Ctrl, Alt or Win (F1–F24 alone are allowed too).",
+            HotkeyPressPrompt = "Press a combination…",
+            SettingsWindowTitle = "TrayFolderMenu – Settings",
+            Subtitle = "Cascading shortcut menus in the system tray · version {0}",
+            FoldersTitle = "Menu folders",
+            FoldersHint = "Each checked folder gets its own tray icon, and its subfolders become submenus. " +
+                          "You can also drag a folder here from Explorer.",
+            FolderMissingSuffix = "   (not found)",
+            Add = "Add…",
+            Remove = "Remove",
+            Open = "Open",
+            PickFolderTitle = "Choose a folder for the menu",
+            MenuBehaviorTitle = "Menu behavior",
+            KeepOpenCheck = "Keep the menu open after launching an item",
+            KeepOpenHint = "The menu stays open, so you can launch several items in one go. It closes when you click " +
+                           "outside it, click the tray icon again or press the hotkey. Ctrl+click inverts this " +
+                           "behavior for a single click.",
+            HotkeyTitle = "Hotkey",
+            HotkeyCheck = "Open the menu with a hotkey (it appears at the mouse cursor)",
+            RestoreHotkey = "Restore {0}",
+            HotkeyDisabled = "The hotkey is turned off.",
+            HotkeyHint = "Click the field and press a new combination (Esc cancels). The hotkey works system-wide; " +
+                         "pressing it again closes the menu.",
+            HotkeyRecording = "Press a new key combination. Esc cancels.",
+            HotkeySaved = "Hotkey {0} saved.",
+            HotkeySavedAltGr = "{0} saved, but note: on many keyboard layouts Ctrl+Alt acts as AltGr, so this hotkey " +
+                               "may block typing characters such as ą, ę or ś.",
+            HotkeyRestored = "Hotkey {0} restored.",
+            StartupTitle = "Startup and installation",
+            AutostartCheck = "Run at Windows sign-in",
+            LocationInstalled = "Installed for the current user in {0}. The app is in the Start menu and in the " +
+                                "Windows list of installed apps.",
+            LocationPortableWithInstalled = "Running a portable copy: {0}. The installed version is in {1}.",
+            LocationPortable = "Portable version: {0}. Installing copies the app to {1} and adds it to the Start menu, " +
+                               "autostart and the list of installed apps (no admin rights needed).",
+            Uninstall = "Uninstall…",
+            UpdateInstall = "Update the installation with this version",
+            Install = "Install for current user",
+            LinkLog = "Log",
+            LinkConfig = "Settings folder",
+            QuitApp = "Exit app",
+            Done = "Done",
+            AutostartFailed = "Could not change autostart:\n{0}",
+            ConfirmUninstall = "Uninstall TrayFolderMenu?\n\nThe app will be closed and removed from autostart.",
+            LogEmpty = "The log is still empty."
+        };
+
+        public static readonly Strings Pl = new Strings
+        {
+            Code = "pl",
+            LanguageName = "Polski",
+            LanguageTooltip = "Język",
+            HelpText = "TrayFolderMenu {0}\n\n" +
+                       "(brak)\t\turuchamia i otwiera ustawienia\n" +
+                       "/autostart\turuchamia po cichu w zasobniku\n" +
+                       "/install\t\tinstaluje dla bieżącego użytkownika\n" +
+                       "/uninstall\tdezinstaluje\n" +
+                       "/quiet\t\tbez okienek (z /install i /uninstall)\n" +
+                       "/folder:\"C:\\Menu\"\tdodaje folder (z /install)\n" +
+                       "/language:en|pl\tustawia język (z /install)\n" +
+                       "/exit\t\tzamyka działającą instancję",
+            InstallCannotClose = "Nie udało się zamknąć działającej instancji TrayFolderMenu.",
+            InstallFailed = "Instalacja nie powiodła się:\n{0}",
+            UninstallAskRemoveData = "TrayFolderMenu zostanie odinstalowane.\n\nUsunąć też ustawienia i log?\n{0}\n{1}",
+            UninstallFailed = "Dezinstalacja nie powiodła się:\n{0}",
+            MenuFolderMissing = "(folder nie istnieje)",
+            MenuAccessDenied = "(brak dostępu)",
+            MenuEmpty = "(pusty)",
+            FallbackTrayText = "TrayFolderMenu – kliknij, aby dodać folder",
+            AdminSettings = "Ustawienia…",
+            AdminOpenFolder = "Otwórz folder w Eksploratorze",
+            AdminKeepOpen = "Nie zamykaj menu po kliknięciu",
+            AdminAutostart = "Uruchamiaj przy logowaniu",
+            AdminExit = "Zamknij TrayFolderMenu",
+            HotkeyInvalid = "Nieprawidłowy skrót w konfiguracji: {0}",
+            HotkeyTaken = "Skrót {0} jest zajęty przez inną aplikację lub system.",
+            HotkeyBalloonTitle = "Skrót klawiszowy",
+            LaunchFailedTitle = "Nie można uruchomić",
+            SaveConfigFailed = "Nie udało się zapisać ustawień:\n{0}",
+            HotkeyNeedsModifier = "Dodaj Ctrl, Alt lub Win (same F1–F24 też są dozwolone).",
+            HotkeyPressPrompt = "Naciśnij kombinację…",
+            SettingsWindowTitle = "TrayFolderMenu – ustawienia",
+            Subtitle = "Kaskadowe menu skrótów w zasobniku · wersja {0}",
+            FoldersTitle = "Foldery menu",
+            FoldersHint = "Każdy zaznaczony folder ma własną ikonę w zasobniku, a jego podfoldery stają się podmenu. " +
+                          "Folder możesz też przeciągnąć tutaj z Eksploratora.",
+            FolderMissingSuffix = "   (nie istnieje)",
+            Add = "Dodaj…",
+            Remove = "Usuń",
+            Open = "Otwórz",
+            PickFolderTitle = "Wybierz folder dla menu",
+            MenuBehaviorTitle = "Zachowanie menu",
+            KeepOpenCheck = "Nie zamykaj menu po uruchomieniu pozycji",
+            KeepOpenHint = "Menu zostaje otwarte, więc możesz uruchomić kilka pozycji z jednego otwarcia. Zamyka się " +
+                           "kliknięciem poza menu, ponownym kliknięciem ikony lub skrótem klawiszowym. " +
+                           "Ctrl+klik odwraca to zachowanie dla pojedynczego kliknięcia.",
+            HotkeyTitle = "Skrót klawiszowy",
+            HotkeyCheck = "Otwieraj menu skrótem klawiszowym (menu pojawia się przy kursorze myszy)",
+            RestoreHotkey = "Przywróć {0}",
+            HotkeyDisabled = "Skrót klawiszowy jest wyłączony.",
+            HotkeyHint = "Kliknij pole i naciśnij nową kombinację (Esc anuluje). Skrót działa w całym systemie, " +
+                         "a ponowne naciśnięcie zamyka menu.",
+            HotkeyRecording = "Naciśnij nową kombinację klawiszy. Esc anuluje.",
+            HotkeySaved = "Zapisano skrót {0}.",
+            HotkeySavedAltGr = "Zapisano {0}, ale uwaga: Ctrl+Alt to AltGr na polskiej klawiaturze, więc ten skrót " +
+                               "może zablokować pisanie polskich liter (ą, ę, ś…).",
+            HotkeyRestored = "Przywrócono skrót {0}.",
+            StartupTitle = "Uruchamianie i instalacja",
+            AutostartCheck = "Uruchamiaj przy logowaniu do Windows",
+            LocationInstalled = "Zainstalowano dla bieżącego użytkownika w {0}. Program jest w menu Start i na liście " +
+                                "aplikacji Windows.",
+            LocationPortableWithInstalled = "Działa kopia przenośna: {0}. Zainstalowana wersja jest w {1}.",
+            LocationPortable = "Wersja przenośna: {0}. Instalacja kopiuje program do {1}, dodaje go do menu Start, " +
+                               "autostartu i listy aplikacji (bez uprawnień administratora).",
+            Uninstall = "Odinstaluj…",
+            UpdateInstall = "Zaktualizuj instalację tą wersją",
+            Install = "Zainstaluj dla bieżącego użytkownika",
+            LinkLog = "Log",
+            LinkConfig = "Folder ustawień",
+            QuitApp = "Zamknij aplikację",
+            Done = "Gotowe",
+            AutostartFailed = "Nie udało się zmienić autostartu:\n{0}",
+            ConfirmUninstall = "Odinstalować TrayFolderMenu?\n\nAplikacja zostanie zamknięta i usunięta z autostartu.",
+            LogEmpty = "Log jest jeszcze pusty."
+        };
+
+        public static readonly Strings[] All = { En, Pl };
+        public static Strings T = En;
+
+        /// <summary>Kod obsługiwanego języka ("en", "pl") albo null. Przyjmuje też np. "pl-PL".</summary>
+        public static string Normalize(string code)
+        {
+            if (string.IsNullOrWhiteSpace(code)) return null;
+            string c = code.Trim().ToLowerInvariant();
+            int dash = c.IndexOf('-');
+            if (dash > 0) c = c.Substring(0, dash);
+            foreach (Strings s in All)
+            {
+                if (s.Code == c) return c;
+            }
+            return null;
+        }
+
+        public static string SystemDefault()
+        {
+            try { return Normalize(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName) ?? En.Code; }
+            catch { return En.Code; }
+        }
+
+        /// <summary>Ustawia język interfejsu; brak lub nieznany kod = język systemu (domyślnie angielski).</summary>
+        public static void Set(string code)
+        {
+            string c = Normalize(code) ?? SystemDefault();
+            T = All.First(s => s.Code == c);
         }
     }
 
@@ -266,6 +477,7 @@ namespace TrayFolderMenu
         [DataMember(Order = 2)] public bool HotkeyEnabled;
         [DataMember(Order = 3)] public string Hotkey;
         [DataMember(Order = 4)] public bool KeepMenuOpen;
+        [DataMember(Order = 5, EmitDefaultValue = false)] public string Language;   // "en", "pl"; brak = język systemu
 
         public AppConfig() { SetDefaults(); }
 
@@ -278,6 +490,7 @@ namespace TrayFolderMenu
             HotkeyEnabled = true;
             Hotkey = DefaultHotkey;
             KeepMenuOpen = false;
+            Language = null;
         }
 
         public static AppConfig Load()
@@ -294,11 +507,12 @@ namespace TrayFolderMenu
                 cfg.Folders.RemoveAll(f => f == null || string.IsNullOrWhiteSpace(f.Path));
                 foreach (FolderEntry f in cfg.Folders) f.Path = AppPaths.Normalize(f.Path);
                 if (string.IsNullOrWhiteSpace(cfg.Hotkey)) cfg.Hotkey = DefaultHotkey;
+                cfg.Language = Lang.Normalize(cfg.Language);
                 return cfg;
             }
             catch (Exception ex)
             {
-                Log.Error("odczyt konfiguracji", ex);
+                Log.Error("reading configuration", ex);
                 try { File.Copy(AppPaths.ConfigFile, AppPaths.ConfigFile + ".bad", true); } catch { }
                 return new AppConfig();
             }
@@ -452,7 +666,7 @@ namespace TrayFolderMenu
             {
                 if (a != null) a.DeleteValue(ValueName, false);
             }
-            Log.Write(enabled ? "Autostart włączony: " + exe : "Autostart wyłączony");
+            Log.Write(enabled ? "Autostart enabled: " + exe : "Autostart disabled");
         }
     }
 
@@ -470,32 +684,39 @@ namespace TrayFolderMenu
 
         public static bool IsInstalled { get { return File.Exists(AppPaths.InstallExe); } }
 
-        public static int Install(bool quiet, string addFolder)
+        public static int Install(bool quiet, string addFolder, string language)
         {
             if (!Program.StopRunningInstance())
             {
-                Fail(quiet, "Nie udało się zamknąć działającej instancji TrayFolderMenu.");
+                Fail(quiet, Lang.T.InstallCannotClose);
                 return 2;
             }
             try
             {
                 Directory.CreateDirectory(AppPaths.InstallDir);
                 if (!AppPaths.IsInstalledCopy) CopyWithRetry(AppPaths.CurrentExe, AppPaths.InstallExe);
-                CreateShortcut(StartMenuShortcut, AppPaths.InstallExe, "Ustawienia menu skrótów w zasobniku");
+                CreateShortcut(StartMenuShortcut, AppPaths.InstallExe, "TrayFolderMenu settings");
                 WriteUninstallEntry();
                 Autostart.Set(true, AppPaths.InstallExe);
                 RemoveLegacyAutostart();
-                if (!string.IsNullOrWhiteSpace(addFolder))
+                string code = Lang.Normalize(language);
+                if (!string.IsNullOrWhiteSpace(addFolder) || code != null)
                 {
                     AppConfig cfg = AppConfig.Load();
-                    if (cfg.AddFolder(addFolder)) cfg.Save();
+                    bool changed = !string.IsNullOrWhiteSpace(addFolder) && cfg.AddFolder(addFolder);
+                    if (code != null && cfg.Language != code)
+                    {
+                        cfg.Language = code;
+                        changed = true;
+                    }
+                    if (changed) cfg.Save();
                 }
-                Log.Write("Zainstalowano " + Program.Version + " w " + AppPaths.InstallDir);
+                Log.Write("Installed " + Program.Version + " to " + AppPaths.InstallDir);
             }
             catch (Exception ex)
             {
-                Log.Error("instalacja", ex);
-                Fail(quiet, "Instalacja nie powiodła się:\n" + ex.Message);
+                Log.Error("installation", ex);
+                Fail(quiet, string.Format(Lang.T.InstallFailed, ex.Message));
                 return 1;
             }
             finally
@@ -518,11 +739,10 @@ namespace TrayFolderMenu
                 Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false);
 
                 bool removeData = !quiet && MessageBox.Show(
-                    "TrayFolderMenu zostanie odinstalowane.\n\nUsunąć też ustawienia i log?\n" +
-                    AppPaths.ConfigDir + "\n" + AppPaths.DataDir,
+                    string.Format(Lang.T.UninstallAskRemoveData, AppPaths.ConfigDir, AppPaths.DataDir),
                     "TrayFolderMenu", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
 
-                Log.Write("Odinstalowano" + (removeData ? "" : " (ustawienia zachowane)"));
+                Log.Write("Uninstalled" + (removeData ? "" : " (settings kept)"));
                 if (removeData)
                 {
                     TryDeleteDirectory(AppPaths.ConfigDir);
@@ -531,8 +751,8 @@ namespace TrayFolderMenu
             }
             catch (Exception ex)
             {
-                Log.Error("dezinstalacja", ex);
-                Fail(quiet, "Dezinstalacja nie powiodła się:\n" + ex.Message);
+                Log.Error("uninstallation", ex);
+                Fail(quiet, string.Format(Lang.T.UninstallFailed, ex.Message));
                 return 1;
             }
             finally
@@ -569,6 +789,8 @@ namespace TrayFolderMenu
                 k.SetValue("EstimatedSize", (int)Math.Max(1, new FileInfo(exe).Length / 1024), RegistryValueKind.DWord);
                 k.SetValue("NoModify", 1, RegistryValueKind.DWord);
                 k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                k.SetValue("URLInfoAbout", Program.ProjectUrl);
+                k.SetValue("HelpLink", Program.ProjectUrl);
             }
         }
 
@@ -595,7 +817,7 @@ namespace TrayFolderMenu
             }
             catch (Exception ex)
             {
-                Log.Error("sprzątanie starej wersji", ex);
+                Log.Error("removing legacy autostart", ex);
             }
         }
 
@@ -652,7 +874,7 @@ namespace TrayFolderMenu
         static void TryDeleteDirectory(string dir)
         {
             try { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
-            catch (Exception ex) { Log.Error("usuwanie " + dir, ex); }
+            catch (Exception ex) { Log.Error("deleting " + dir, ex); }
         }
 
         static void Fail(bool quiet, string message)
@@ -837,7 +1059,7 @@ namespace TrayFolderMenu
             }
             catch (Exception ex)
             {
-                Log.Error("okno wyboru folderu", ex);
+                Log.Error("folder picker", ex);
                 using (var fallback = new FolderBrowserDialog { Description = title, ShowNewFolderButton = true })
                 {
                     return fallback.ShowDialog(owner) == DialogResult.OK ? fallback.SelectedPath : null;
@@ -857,7 +1079,7 @@ namespace TrayFolderMenu
     {
         public static bool Dark;
         public static Color WindowBack, Card, CardBorder, Text, SubText, ButtonBack, ButtonBorder, ButtonHover,
-                            Accent, AccentHover, AccentText, InputBack, Error, Success,
+                            Accent, AccentHover, AccentText, InputBack, Error, Success, SubtleHover,
                             MenuBack, MenuHover, MenuText, MenuDisabled, MenuSeparator, MenuBorder;
 
         public static readonly bool IsWindows11 = Native.WindowsBuild() >= 22000;
@@ -886,7 +1108,7 @@ namespace TrayFolderMenu
                 Text = C(0xFFFFFF); SubText = C(0xC5C5C5);
                 ButtonBack = C(0x373737); ButtonBorder = C(0x454545); ButtonHover = C(0x404040);
                 Accent = C(0x60CDFF); AccentHover = C(0x56B9E6); AccentText = C(0x000000);
-                InputBack = C(0x1F1F1F); Error = C(0xFF99A4); Success = C(0x6CCB5F);
+                InputBack = C(0x1F1F1F); Error = C(0xFF99A4); Success = C(0x6CCB5F); SubtleHover = C(0x2D2D2D);
                 MenuBack = C(0x2C2C2C); MenuHover = C(0x3D3D3D); MenuText = C(0xFFFFFF);
                 MenuDisabled = C(0x7A7A7A); MenuSeparator = C(0x404040); MenuBorder = C(0x474747);
             }
@@ -896,7 +1118,7 @@ namespace TrayFolderMenu
                 Text = C(0x1B1B1B); SubText = C(0x5F5F5F);
                 ButtonBack = C(0xFDFDFD); ButtonBorder = C(0xD1D1D1); ButtonHover = C(0xF0F0F0);
                 Accent = C(0x005FB8); AccentHover = C(0x1A6FC1); AccentText = C(0xFFFFFF);
-                InputBack = C(0xFFFFFF); Error = C(0xC42B1C); Success = C(0x0F7B0F);
+                InputBack = C(0xFFFFFF); Error = C(0xC42B1C); Success = C(0x0F7B0F); SubtleHover = C(0xE6E6E6);
                 MenuBack = C(0xF9F9F9); MenuHover = C(0xEAEAEA); MenuText = C(0x1B1B1B);
                 MenuDisabled = C(0x9D9D9D); MenuSeparator = C(0xE3E3E3); MenuBorder = C(0xD5D5D5);
             }
@@ -1101,7 +1323,7 @@ namespace TrayFolderMenu
                 var di = new DirectoryInfo(folder);
                 if (!di.Exists)
                 {
-                    items.Add(Placeholder("(folder nie istnieje)"));
+                    items.Add(Placeholder(Lang.T.MenuFolderMissing));
                     return;
                 }
                 dirs = di.GetDirectories().Where(d => (d.Attributes & FileAttributes.Hidden) == 0).ToArray();
@@ -1109,8 +1331,8 @@ namespace TrayFolderMenu
             }
             catch (Exception ex)
             {
-                Log.Error("odczyt folderu " + folder, ex);
-                items.Add(Placeholder("(brak dostępu)"));
+                Log.Error("reading folder " + folder, ex);
+                items.Add(Placeholder(Lang.T.MenuAccessDenied));
                 return;
             }
 
@@ -1125,7 +1347,7 @@ namespace TrayFolderMenu
                 string text = ext == ".lnk" || ext == ".url" ? Path.GetFileNameWithoutExtension(f.Name) : f.Name;
                 items.Add(FileItem(f.FullName, text.Length > 0 ? text : f.Name));
             }
-            if (dirs.Length + files.Length == 0) items.Add(Placeholder("(pusty)"));
+            if (dirs.Length + files.Length == 0) items.Add(Placeholder(Lang.T.MenuEmpty));
         }
 
         public static ToolStripMenuItem FolderItem(string path, string text)
@@ -1250,7 +1472,7 @@ namespace TrayFolderMenu
             ready.Set();
             if (hook == IntPtr.Zero)
             {
-                Log.Write("Nie udało się założyć haka myszy (błąd " + error + ")");
+                Log.Write("Could not install the mouse hook (error " + error + ")");
                 return;
             }
             try
@@ -1388,7 +1610,19 @@ namespace TrayFolderMenu
         bool exiting;
 
         public readonly Icon AppIconSmall, AppIconLarge;
-        public string HotkeyError { get; private set; }
+        int hotkeyErrorKind;          // 0 = OK, 1 = nieprawidłowy zapis, 2 = zajęty
+        string hotkeyErrorCombo;
+
+        /// <summary>Opis błędu skrótu w bieżącym języku interfejsu (null = brak błędu).</summary>
+        public string HotkeyError
+        {
+            get
+            {
+                if (hotkeyErrorKind == 1) return string.Format(Lang.T.HotkeyInvalid, hotkeyErrorCombo);
+                if (hotkeyErrorKind == 2) return string.Format(Lang.T.HotkeyTaken, hotkeyErrorCombo);
+                return null;
+            }
+        }
         public AppConfig Config { get { return config; } }
 
         public TrayApp(bool showSettings, EventWaitHandle showEvt, EventWaitHandle exitEvt)
@@ -1401,6 +1635,7 @@ namespace TrayFolderMenu
 
             msgWin = new MessageWindow(this);
             config = AppConfig.Load();
+            Lang.Set(config.Language);
             MenuBuilder.App = this;
             watcher = new OutsideClickWatcher(IsOpenMenuWindow, OnOutsideClick);
             flashTimer = new System.Windows.Forms.Timer { Interval = 350 };
@@ -1422,7 +1657,7 @@ namespace TrayFolderMenu
             signalThread = new Thread(SignalLoop) { IsBackground = true, Name = "TrayFolderMenu signals" };
             signalThread.Start();
 
-            Log.Write("Start " + Program.Version + ": " + AppPaths.CurrentExe);
+            Log.Write("Started " + Program.Version + " (" + Lang.T.Code + "): " + AppPaths.CurrentExe);
             if (showSettings) ShowSettings();
         }
 
@@ -1590,7 +1825,7 @@ namespace TrayFolderMenu
 
             if (trays.Count == 0 && fallback == null)
             {
-                fallback = new NotifyIcon { Icon = AppIconSmall, Text = "TrayFolderMenu – kliknij, aby dodać folder" };
+                fallback = new NotifyIcon { Icon = AppIconSmall, Text = Lang.T.FallbackTrayText };
                 fallback.MouseUp += (s, e) =>
                 {
                     if (e.Button == MouseButtons.Left) ShowSettings();
@@ -1616,7 +1851,7 @@ namespace TrayFolderMenu
             }
             catch (Exception ex)
             {
-                Log.Error("pokazywanie menu", ex);
+                Log.Error("showing menu", ex);
                 Native.SetForegroundWindow(msgWin.Handle);
                 menu.Show(Cursor.Position);
             }
@@ -1630,19 +1865,19 @@ namespace TrayFolderMenu
         {
             MenuBuilder.Clear(adminMenu.Items);
 
-            ToolStripMenuItem settingsItem = MenuBuilder.NewItem("Ustawienia…");
+            ToolStripMenuItem settingsItem = MenuBuilder.NewItem(Lang.T.AdminSettings);
             settingsItem.Font = MenuBuilder.BoldFont;
             settingsItem.Click += (s, e) => ShowSettings();
             adminMenu.Items.Add(settingsItem);
 
             if (folder != null)
             {
-                ToolStripMenuItem open = MenuBuilder.NewItem("Otwórz folder w Eksploratorze");
+                ToolStripMenuItem open = MenuBuilder.NewItem(Lang.T.AdminOpenFolder);
                 open.Click += (s, e) => Launch(folder);
                 adminMenu.Items.Add(open);
             }
 
-            ToolStripMenuItem keep = MenuBuilder.NewItem("Nie zamykaj menu po kliknięciu");
+            ToolStripMenuItem keep = MenuBuilder.NewItem(Lang.T.AdminKeepOpen);
             keep.Checked = config.KeepMenuOpen;
             keep.Click += (s, e) =>
             {
@@ -1652,7 +1887,7 @@ namespace TrayFolderMenu
             };
             adminMenu.Items.Add(keep);
 
-            ToolStripMenuItem auto = MenuBuilder.NewItem("Uruchamiaj przy logowaniu");
+            ToolStripMenuItem auto = MenuBuilder.NewItem(Lang.T.AdminAutostart);
             auto.Checked = Autostart.IsEnabled;
             auto.Click += (s, e) =>
             {
@@ -1663,7 +1898,7 @@ namespace TrayFolderMenu
             adminMenu.Items.Add(auto);
 
             adminMenu.Items.Add(new ToolStripSeparator());
-            ToolStripMenuItem quit = MenuBuilder.NewItem("Zamknij TrayFolderMenu");
+            ToolStripMenuItem quit = MenuBuilder.NewItem(Lang.T.AdminExit);
             quit.Click += (s, e) => ExitApp();
             adminMenu.Items.Add(quit);
             return adminMenu;
@@ -1673,23 +1908,20 @@ namespace TrayFolderMenu
         public bool ApplyHotkey(bool notifyOnFailure)
         {
             Native.UnregisterHotKey(msgWin.Handle, MessageWindow.HotkeyId);
-            HotkeyError = null;
+            hotkeyErrorKind = 0;
             if (!config.HotkeyEnabled) return true;
 
             uint mods;
             Keys key;
-            if (!Hotkey.TryParse(config.Hotkey, out mods, out key))
-            {
-                HotkeyError = "Nieprawidłowy skrót w konfiguracji: " + config.Hotkey;
-            }
-            else if (!Native.RegisterHotKey(msgWin.Handle, MessageWindow.HotkeyId, mods | Hotkey.MOD_NOREPEAT, (uint)key))
-            {
-                HotkeyError = "Skrót " + config.Hotkey + " jest zajęty przez inną aplikację lub system.";
-            }
+            if (!Hotkey.TryParse(config.Hotkey, out mods, out key)) hotkeyErrorKind = 1;
+            else if (!Native.RegisterHotKey(msgWin.Handle, MessageWindow.HotkeyId, mods | Hotkey.MOD_NOREPEAT, (uint)key)) hotkeyErrorKind = 2;
+            if (hotkeyErrorKind == 0) return true;
 
-            if (HotkeyError == null) return true;
-            Log.Write(HotkeyError);
-            if (notifyOnFailure) Balloon("Skrót klawiszowy", HotkeyError, ToolTipIcon.Warning);
+            hotkeyErrorCombo = config.Hotkey;
+            Log.Write(hotkeyErrorKind == 1
+                ? "Invalid hotkey in configuration: " + config.Hotkey
+                : "Hotkey " + config.Hotkey + " could not be registered (already in use)");
+            if (notifyOnFailure) Balloon(Lang.T.HotkeyBalloonTitle, HotkeyError, ToolTipIcon.Warning);
             return false;
         }
 
@@ -1771,8 +2003,8 @@ namespace TrayFolderMenu
 
         void ReportLaunchError(string target, Exception ex)
         {
-            Log.Error("uruchamianie " + target, ex);
-            Balloon("Nie można uruchomić", Path.GetFileName(target) + ": " + ex.Message, ToolTipIcon.Error);
+            Log.Error("launching " + target, ex);
+            Balloon(Lang.T.LaunchFailedTitle, Path.GetFileName(target) + ": " + ex.Message, ToolTipIcon.Error);
         }
 
         public void Balloon(string title, string text, ToolTipIcon icon)
@@ -1794,6 +2026,23 @@ namespace TrayFolderMenu
             Native.SetForegroundWindow(settings.Handle);
         }
 
+        /// <summary>Zmiana języka w locie: zapis do konfiguracji i odświeżenie otwartych okien.</summary>
+        public void SetLanguage(string code)
+        {
+            code = Lang.Normalize(code);
+            if (code == null) return;
+            if (config.Language != code)
+            {
+                config.Language = code;
+                SaveConfigOnly();
+            }
+            if (Lang.T.Code == code) return;
+            Lang.Set(code);
+            Log.Write("Language changed to " + code);
+            if (fallback != null) fallback.Text = Lang.T.FallbackTrayText;
+            if (settings != null && !settings.IsDisposed) settings.ApplyLanguage();
+        }
+
         public void SaveConfig()
         {
             SaveConfigOnly();
@@ -1805,8 +2054,8 @@ namespace TrayFolderMenu
             try { config.Save(); }
             catch (Exception ex)
             {
-                Log.Error("zapis konfiguracji", ex);
-                MessageBox.Show("Nie udało się zapisać ustawień:\n" + ex.Message, "TrayFolderMenu",
+                Log.Error("saving configuration", ex);
+                MessageBox.Show(string.Format(Lang.T.SaveConfigFailed, ex.Message), "TrayFolderMenu",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -1830,7 +2079,7 @@ namespace TrayFolderMenu
         {
             if (exiting) return;
             exiting = true;
-            Log.Write("Zamknięcie");
+            Log.Write("Exit");
             ExitThread();
         }
 
@@ -1962,7 +2211,7 @@ namespace TrayFolderMenu
                         (shift ? Hotkey.MOD_SHIFT : 0u) | (win ? Hotkey.MOD_WIN : 0u);
             if (!Hotkey.IsValid(mods, key))
             {
-                if (Hint != null) Hint("Dodaj Ctrl, Alt lub Win (same F1–F24 też są dozwolone).");
+                if (Hint != null) Hint(Lang.T.HotkeyNeedsModifier);
                 return true;
             }
             if (Captured != null) Captured(mods, key);
@@ -1976,7 +2225,7 @@ namespace TrayFolderMenu
             if (alt) parts.Add("Alt");
             if (shift) parts.Add("Shift");
             if (win) parts.Add("Win");
-            return parts.Count == 0 ? "Naciśnij kombinację…" : string.Join("+", parts) + "+…";
+            return parts.Count == 0 ? Lang.T.HotkeyPressPrompt : string.Join("+", parts) + "+…";
         }
     }
 
@@ -1992,13 +2241,17 @@ namespace TrayFolderMenu
         readonly List<Label> subs = new List<Label>();
         readonly List<Button> buttons = new List<Button>();
         readonly List<LinkLabel> links = new List<LinkLabel>();
+        // teksty zależne od języka: kontrolka + funkcja zwracająca tekst w bieżącym języku
+        readonly List<KeyValuePair<Control, Func<string>>> texts = new List<KeyValuePair<Control, Func<string>>>();
         readonly CheckedListBox list;
         readonly BorderPanel listBorder, hotkeyBorder;
         readonly HotkeyBox hotkeyBox;
         readonly CheckBox chkHotkey, chkAutostart, chkKeepOpen;
         readonly Label lblTitle, lblHotkeyStatus, lblLocation;
-        readonly Button btnAdd, btnRemove, btnOpen, btnDefaultHotkey, btnInstall, btnQuit, btnDone;
-        readonly LinkLabel lnkLog, lnkConfig;
+        readonly Button btnLanguage, btnAdd, btnRemove, btnOpen, btnDefaultHotkey, btnInstall, btnQuit, btnDone;
+        readonly LinkLabel lnkLog, lnkConfig, lnkGitHub;
+        readonly ContextMenuStrip languageMenu;
+        readonly ToolTip toolTip = new ToolTip();
         bool loading;
         string statusOverride;
         bool statusIsError;
@@ -2011,7 +2264,7 @@ namespace TrayFolderMenu
             public FolderView(FolderEntry entry) { Entry = entry; }
             public override string ToString()
             {
-                return Directory.Exists(Entry.Path) ? Entry.Path : Entry.Path + "   (nie istnieje)";
+                return Directory.Exists(Entry.Path) ? Entry.Path : Entry.Path + Lang.T.FolderMissingSuffix;
             }
         }
 
@@ -2021,11 +2274,11 @@ namespace TrayFolderMenu
             SuspendLayout();
             AutoScaleMode = AutoScaleMode.None;   // rozmiary liczone ręcznie przez Theme.Scale
             Font = Theme.UiFont(9f, false);
-            Text = "TrayFolderMenu – ustawienia";
             Icon = app.AppIconLarge;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
+            Bind(this, () => Lang.T.SettingsWindowTitle);
 
             root = new TableLayoutPanel
             {
@@ -2036,20 +2289,42 @@ namespace TrayFolderMenu
                 Margin = Padding.Empty
             };
 
-            // --- Nagłówek ---
-            lblTitle = NewLabel("TrayFolderMenu", Theme.UiFont(15f, true));
+            // --- Nagłówek: tytuł po lewej, wybór języka w prawym górnym rogu ---
+            var header = new TableLayoutPanel
+            {
+                ColumnCount = 2,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                Margin = new Padding(0, 0, 0, S(12))
+            };
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            lblTitle = NewLabel(Theme.UiFont(15f, true));
+            lblTitle.Text = "TrayFolderMenu";
             lblTitle.Margin = Padding.Empty;
-            root.Controls.Add(lblTitle);
-            Label subtitle = NewLabel("Kaskadowe menu skrótów w zasobniku · wersja " + Program.Version, null);
-            subtitle.Margin = new Padding(0, 0, 0, S(12));
+            header.Controls.Add(lblTitle, 0, 0);
+            Label subtitle = NewLabel(null);
+            subtitle.Margin = Padding.Empty;
             subs.Add(subtitle);
-            root.Controls.Add(subtitle);
+            Bind(subtitle, () => string.Format(Lang.T.Subtitle, Program.Version));
+            header.Controls.Add(subtitle, 0, 1);
+            btnLanguage = NewButton("subtle", () => Lang.T.LanguageName + "  ▾");
+            btnLanguage.MinimumSize = new Size(0, S(32));
+            btnLanguage.Padding = new Padding(S(8), 0, S(8), 0);
+            btnLanguage.TextImageRelation = TextImageRelation.ImageBeforeText;
+            btnLanguage.ImageAlign = ContentAlignment.MiddleLeft;
+            btnLanguage.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnLanguage.Margin = new Padding(S(16), 0, 0, 0);
+            header.Controls.Add(btnLanguage, 1, 0);
+            header.SetRowSpan(btnLanguage, 2);
+            root.Controls.Add(header);
+            languageMenu = app.NewMenu();
 
             // --- Karta: foldery ---
             CardPanel cFolders = NewCard(2);
-            AddTitle(cFolders, "Foldery menu", 0, 2);
-            AddSub(cFolders, "Każdy zaznaczony folder ma własną ikonę w zasobniku, a jego podfoldery stają się podmenu. " +
-                             "Folder możesz też przeciągnąć tutaj z Eksploratora.", 1, 2);
+            AddTitle(cFolders, () => Lang.T.FoldersTitle, 0, 2);
+            AddSub(cFolders, () => Lang.T.FoldersHint, 1, 2);
             list = new CheckedListBox
             {
                 BorderStyle = BorderStyle.None,
@@ -2070,27 +2345,25 @@ namespace TrayFolderMenu
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 Margin = new Padding(0, S(8), 0, 0)
             };
-            btnAdd = NewButton("Dodaj…", false);
-            btnRemove = NewButton("Usuń", false);
-            btnOpen = NewButton("Otwórz", false);
+            btnAdd = NewButton(null, () => Lang.T.Add);
+            btnRemove = NewButton(null, () => Lang.T.Remove);
+            btnOpen = NewButton(null, () => Lang.T.Open);
             folderButtons.Controls.AddRange(new Control[] { btnAdd, btnRemove, btnOpen });
             cFolders.Controls.Add(folderButtons, 1, 2);
             root.Controls.Add(cFolders);
 
             // --- Karta: zachowanie menu ---
             CardPanel cMenu = NewCard(1);
-            AddTitle(cMenu, "Zachowanie menu", 0, 1);
-            chkKeepOpen = NewCheck("Nie zamykaj menu po uruchomieniu pozycji");
+            AddTitle(cMenu, () => Lang.T.MenuBehaviorTitle, 0, 1);
+            chkKeepOpen = NewCheck(() => Lang.T.KeepOpenCheck);
             cMenu.Controls.Add(chkKeepOpen, 0, 1);
-            AddSub(cMenu, "Menu zostaje otwarte, więc możesz uruchomić kilka pozycji z jednego otwarcia. Zamyka się " +
-                          "kliknięciem poza menu, ponownym kliknięciem ikony lub skrótem klawiszowym. " +
-                          "Ctrl+klik odwraca to zachowanie dla pojedynczego kliknięcia.", 2, 1);
+            AddSub(cMenu, () => Lang.T.KeepOpenHint, 2, 1);
             root.Controls.Add(cMenu);
 
             // --- Karta: skrót klawiszowy ---
             CardPanel cHotkey = NewCard(2);
-            AddTitle(cHotkey, "Skrót klawiszowy", 0, 2);
-            chkHotkey = NewCheck("Otwieraj menu skrótem klawiszowym (menu pojawia się przy kursorze myszy)");
+            AddTitle(cHotkey, () => Lang.T.HotkeyTitle, 0, 2);
+            chkHotkey = NewCheck(() => Lang.T.HotkeyCheck);
             cHotkey.Controls.Add(chkHotkey, 0, 1);
             cHotkey.SetColumnSpan(chkHotkey, 2);
             hotkeyBox = new HotkeyBox { BorderStyle = BorderStyle.None, Dock = DockStyle.Fill, Font = Theme.UiFont(10f, true) };
@@ -2098,21 +2371,21 @@ namespace TrayFolderMenu
             hotkeyBorder.Size = new Size(S(220), hotkeyBox.PreferredHeight + S(12) + 2);
             hotkeyBorder.Controls.Add(hotkeyBox);
             cHotkey.Controls.Add(hotkeyBorder, 0, 2);
-            btnDefaultHotkey = NewButton("Przywróć " + AppConfig.DefaultHotkey, false);
+            btnDefaultHotkey = NewButton(null, () => string.Format(Lang.T.RestoreHotkey, AppConfig.DefaultHotkey));
             btnDefaultHotkey.Margin = Padding.Empty;
             btnDefaultHotkey.Anchor = AnchorStyles.Left;
             cHotkey.Controls.Add(btnDefaultHotkey, 1, 2);
-            lblHotkeyStatus = AddSub(cHotkey, "", 3, 2);
+            lblHotkeyStatus = AddSub(cHotkey, null, 3, 2);
             lblHotkeyStatus.Margin = new Padding(0, S(8), 0, 0);
             root.Controls.Add(cHotkey);
 
             // --- Karta: uruchamianie i instalacja ---
             CardPanel cStart = NewCard(1);
-            AddTitle(cStart, "Uruchamianie i instalacja", 0, 1);
-            chkAutostart = NewCheck("Uruchamiaj przy logowaniu do Windows");
+            AddTitle(cStart, () => Lang.T.StartupTitle, 0, 1);
+            chkAutostart = NewCheck(() => Lang.T.AutostartCheck);
             cStart.Controls.Add(chkAutostart, 0, 1);
-            lblLocation = AddSub(cStart, "", 2, 1);
-            btnInstall = NewButton("", false);
+            lblLocation = AddSub(cStart, null, 2, 1);
+            btnInstall = NewButton(null, null);   // tekst ustawia RefreshState
             btnInstall.Margin = new Padding(0, S(6), 0, 0);
             btnInstall.Anchor = AnchorStyles.Left;
             cStart.Controls.Add(btnInstall, 0, 3);
@@ -2130,14 +2403,16 @@ namespace TrayFolderMenu
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             var linkPanel = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.Left, Margin = Padding.Empty };
-            lnkLog = NewLink("Log");
-            lnkConfig = NewLink("Folder ustawień");
+            lnkLog = NewLink(() => Lang.T.LinkLog);
+            lnkConfig = NewLink(() => Lang.T.LinkConfig);
+            lnkGitHub = NewLink(() => "GitHub");
             linkPanel.Controls.Add(lnkLog);
             linkPanel.Controls.Add(lnkConfig);
+            linkPanel.Controls.Add(lnkGitHub);
             var buttonPanel = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Anchor = AnchorStyles.Right, Margin = Padding.Empty };
-            btnQuit = NewButton("Zamknij aplikację", false);
+            btnQuit = NewButton(null, () => Lang.T.QuitApp);
             btnQuit.Margin = new Padding(0, 0, S(8), 0);
-            btnDone = NewButton("Gotowe", true);
+            btnDone = NewButton("primary", () => Lang.T.Done);
             btnDone.Margin = Padding.Empty;
             buttonPanel.Controls.Add(btnQuit);
             buttonPanel.Controls.Add(btnDone);
@@ -2148,6 +2423,7 @@ namespace TrayFolderMenu
             Controls.Add(root);
             AcceptButton = btnDone;
             CancelButton = btnDone;
+            toolTip.SetToolTip(btnLanguage, Lang.T.LanguageTooltip);
             WireEvents();
             ApplyTheme();
             ResumeLayout(true);
@@ -2158,6 +2434,13 @@ namespace TrayFolderMenu
         }
 
         // --- Fabryki kontrolek ---------------------------------------------------
+        void Bind(Control control, Func<string> text)
+        {
+            if (text == null) return;
+            texts.Add(new KeyValuePair<Control, Func<string>>(control, text));
+            control.Text = text();
+        }
+
         CardPanel NewCard(int columns)
         {
             var card = new CardPanel { ColumnCount = columns, Anchor = AnchorStyles.Left | AnchorStyles.Right };
@@ -2165,59 +2448,65 @@ namespace TrayFolderMenu
             return card;
         }
 
-        static Label NewLabel(string text, Font font)
+        static Label NewLabel(Font font)
         {
-            var label = new Label { Text = text, AutoSize = true, UseMnemonic = false };
+            var label = new Label { AutoSize = true, UseMnemonic = false };
             if (font != null) label.Font = font;
             return label;
         }
 
-        Label AddTitle(CardPanel card, string text, int row, int span)
+        Label AddTitle(CardPanel card, Func<string> text, int row, int span)
         {
-            Label label = NewLabel(text, Theme.UiFont(10.5f, true));
+            Label label = NewLabel(Theme.UiFont(10.5f, true));
             label.Margin = new Padding(0, 0, 0, S(2));
+            Bind(label, text);
             card.Controls.Add(label, 0, row);
             card.SetColumnSpan(label, span);
             titles.Add(label);
             return label;
         }
 
-        Label AddSub(CardPanel card, string text, int row, int span)
+        Label AddSub(CardPanel card, Func<string> text, int row, int span)
         {
-            Label label = NewLabel(text, null);
+            Label label = NewLabel(null);
             label.MaximumSize = new Size(S(540), 0);
             label.Margin = new Padding(0, 0, 0, S(2));
+            Bind(label, text);
             card.Controls.Add(label, 0, row);
             card.SetColumnSpan(label, span);
             subs.Add(label);
             return label;
         }
 
-        CheckBox NewCheck(string text)
+        CheckBox NewCheck(Func<string> text)
         {
-            return new CheckBox { Text = text, AutoSize = true, UseMnemonic = false, Margin = new Padding(0, S(6), 0, S(8)) };
+            var check = new CheckBox { AutoSize = true, UseMnemonic = false, Margin = new Padding(0, S(6), 0, S(8)) };
+            Bind(check, text);
+            return check;
         }
 
-        Button NewButton(string text, bool primary)
+        /// <summary>style: null (zwykły), "primary" (akcent), "subtle" (bez ramki).</summary>
+        Button NewButton(string style, Func<string> text)
         {
             var b = new Button
             {
-                Text = text,
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 MinimumSize = new Size(S(104), S(32)),
                 Padding = new Padding(S(10), 0, S(10), 0),
                 Margin = new Padding(0, 0, 0, S(6)),
                 UseMnemonic = false,
-                Tag = primary ? "primary" : null
+                Tag = style
             };
+            Bind(b, text);
             buttons.Add(b);
             return b;
         }
 
-        LinkLabel NewLink(string text)
+        LinkLabel NewLink(Func<string> text)
         {
-            var link = new LinkLabel { Text = text, AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, S(8), S(14), 0) };
+            var link = new LinkLabel { AutoSize = true, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, S(8), S(14), 0) };
+            Bind(link, text);
             links.Add(link);
             return link;
         }
@@ -2227,7 +2516,39 @@ namespace TrayFolderMenu
             ClientSize = new Size(root.Right + S(20), root.Bottom + S(16));
         }
 
-        // --- Motyw -------------------------------------------------------------
+        /// <summary>Ikona globu rysowana wektorowo (bez zależności od czcionek z ikonami).</summary>
+        static Bitmap DrawGlobe(Color color)
+        {
+            int size = S(16);
+            var bmp = new Bitmap(size, size);
+            using (Graphics g = Graphics.FromImage(bmp))
+            using (var pen = new Pen(color, Math.Max(1f, 1.2f * Theme.DpiScale)))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                float inset = pen.Width / 2f + 0.5f;
+                var r = new RectangleF(inset, inset, size - 2 * inset, size - 2 * inset);
+                float cx = r.Left + r.Width / 2f, cy = r.Top + r.Height / 2f;
+                g.DrawEllipse(pen, r);
+                g.DrawEllipse(pen, cx - r.Width * 0.22f, r.Top, r.Width * 0.44f, r.Height);
+                g.DrawLine(pen, r.Left, cy, r.Right, cy);
+                float half = r.Width * 0.43f;
+                g.DrawLine(pen, cx - half, r.Top + r.Height * 0.25f, cx + half, r.Top + r.Height * 0.25f);
+                g.DrawLine(pen, cx - half, r.Top + r.Height * 0.75f, cx + half, r.Top + r.Height * 0.75f);
+            }
+            return bmp;
+        }
+
+        // --- Język i motyw ----------------------------------------------------
+        /// <summary>Podmienia wszystkie teksty w locie, bez zamykania okna.</summary>
+        public void ApplyLanguage()
+        {
+            SuspendLayout();
+            foreach (KeyValuePair<Control, Func<string>> t in texts) t.Key.Text = t.Value();
+            toolTip.SetToolTip(btnLanguage, Lang.T.LanguageTooltip);
+            ResumeLayout(true);
+            RefreshState();
+        }
+
         public void ApplyTheme()
         {
             BackColor = Theme.WindowBack;
@@ -2243,7 +2564,7 @@ namespace TrayFolderMenu
             }
             foreach (Label l in titles) l.ForeColor = Theme.Text;
             foreach (Label l in subs) l.ForeColor = Theme.SubText;
-            foreach (Button b in buttons) StyleButton(b, (b.Tag as string) == "primary");
+            foreach (Button b in buttons) StyleButton(b, b.Tag as string);
             foreach (CheckBox cb in new[] { chkHotkey, chkAutostart, chkKeepOpen }) StyleCheck(cb);
             foreach (LinkLabel l in links)
             {
@@ -2261,22 +2582,27 @@ namespace TrayFolderMenu
             list.ForeColor = Theme.Text;
             hotkeyBox.BackColor = Theme.InputBack;
             hotkeyBox.ForeColor = Theme.Text;
+            Image oldGlobe = btnLanguage.Image;
+            btnLanguage.Image = DrawGlobe(Theme.Text);
+            if (oldGlobe != null) oldGlobe.Dispose();
             if (IsHandleCreated) Theme.ApplyWindowFrame(Handle);
             if (list.IsHandleCreated) Native.SetTheme(list.Handle, Theme.Dark ? "DarkMode_Explorer" : "Explorer");
             UpdateHotkeyStatus();
             Invalidate(true);
         }
 
-        static void StyleButton(Button b, bool primary)
+        static void StyleButton(Button b, string style)
         {
+            bool primary = style == "primary", subtle = style == "subtle";
             b.FlatStyle = FlatStyle.Flat;
             b.UseVisualStyleBackColor = false;
-            b.FlatAppearance.BorderSize = 1;
-            b.BackColor = primary ? Theme.Accent : Theme.ButtonBack;
+            b.FlatAppearance.BorderSize = subtle ? 0 : 1;
+            b.BackColor = primary ? Theme.Accent : (subtle ? Theme.WindowBack : Theme.ButtonBack);
             b.ForeColor = primary ? Theme.AccentText : Theme.Text;
             b.FlatAppearance.BorderColor = primary ? Theme.Accent : Theme.ButtonBorder;
-            b.FlatAppearance.MouseOverBackColor = primary ? Theme.AccentHover : Theme.ButtonHover;
-            b.FlatAppearance.MouseDownBackColor = primary ? Theme.AccentHover : Theme.ButtonHover;
+            Color hover = primary ? Theme.AccentHover : (subtle ? Theme.SubtleHover : Theme.ButtonHover);
+            b.FlatAppearance.MouseOverBackColor = hover;
+            b.FlatAppearance.MouseDownBackColor = hover;
         }
 
         static void StyleCheck(CheckBox cb)
@@ -2319,22 +2645,18 @@ namespace TrayFolderMenu
 
                 if (AppPaths.IsInstalledCopy)
                 {
-                    lblLocation.Text = "Zainstalowano dla bieżącego użytkownika w " + AppPaths.InstallDir +
-                                       ". Program jest w menu Start i na liście aplikacji Windows.";
-                    btnInstall.Text = "Odinstaluj…";
+                    lblLocation.Text = string.Format(Lang.T.LocationInstalled, AppPaths.InstallDir);
+                    btnInstall.Text = Lang.T.Uninstall;
                 }
                 else if (Installer.IsInstalled)
                 {
-                    lblLocation.Text = "Działa kopia przenośna: " + AppPaths.CurrentExe +
-                                       ". Zainstalowana wersja jest w " + AppPaths.InstallDir + ".";
-                    btnInstall.Text = "Zaktualizuj instalację tą wersją";
+                    lblLocation.Text = string.Format(Lang.T.LocationPortableWithInstalled, AppPaths.CurrentExe, AppPaths.InstallDir);
+                    btnInstall.Text = Lang.T.UpdateInstall;
                 }
                 else
                 {
-                    lblLocation.Text = "Wersja przenośna: " + AppPaths.CurrentExe + ". Instalacja kopiuje program do " +
-                                       AppPaths.InstallDir + ", dodaje go do menu Start, autostartu i listy aplikacji " +
-                                       "(bez uprawnień administratora).";
-                    btnInstall.Text = "Zainstaluj dla bieżącego użytkownika";
+                    lblLocation.Text = string.Format(Lang.T.LocationPortable, AppPaths.CurrentExe, AppPaths.InstallDir);
+                    btnInstall.Text = Lang.T.Install;
                 }
                 UpdateHotkeyStatus();
                 UpdateButtons();
@@ -2362,7 +2684,7 @@ namespace TrayFolderMenu
             }
             else if (!app.Config.HotkeyEnabled)
             {
-                text = "Skrót klawiszowy jest wyłączony.";
+                text = Lang.T.HotkeyDisabled;
                 color = Theme.SubText;
             }
             else if (app.HotkeyError != null)
@@ -2372,8 +2694,7 @@ namespace TrayFolderMenu
             }
             else
             {
-                text = "Kliknij pole i naciśnij nową kombinację (Esc anuluje). Skrót działa w całym systemie, " +
-                       "a ponowne naciśnięcie zamyka menu.";
+                text = Lang.T.HotkeyHint;
                 color = Theme.SubText;
             }
             lblHotkeyStatus.Text = text;
@@ -2406,6 +2727,20 @@ namespace TrayFolderMenu
         // --- Zdarzenia ---------------------------------------------------------
         void WireEvents()
         {
+            btnLanguage.Click += (s, e) =>
+            {
+                MenuBuilder.Clear(languageMenu.Items);
+                foreach (Strings language in Lang.All)
+                {
+                    ToolStripMenuItem item = MenuBuilder.NewItem(language.LanguageName);
+                    item.Checked = language == Lang.T;
+                    string code = language.Code;
+                    item.Click += (a, b) => app.SetLanguage(code);
+                    languageMenu.Items.Add(item);
+                }
+                languageMenu.Show(btnLanguage, new Point(btnLanguage.Width, btnLanguage.Height), ToolStripDropDownDirection.BelowLeft);
+            };
+
             list.ItemCheck += (s, e) =>
             {
                 if (loading) return;
@@ -2428,7 +2763,7 @@ namespace TrayFolderMenu
 
             btnAdd.Click += (s, e) =>
             {
-                string path = FolderPicker.Pick(this, "Wybierz folder dla menu");
+                string path = FolderPicker.Pick(this, Lang.T.PickFolderTitle);
                 if (path != null) AddFolders(new[] { path });
             };
             btnRemove.Click += (s, e) =>
@@ -2465,8 +2800,8 @@ namespace TrayFolderMenu
             hotkeyBox.Enter += (s, e) =>
             {
                 app.SuspendHotkey();   // inaczej obecny skrót zostałby przechwycony przez system
-                hotkeyBox.Text = "Naciśnij kombinację…";
-                lblHotkeyStatus.Text = "Naciśnij nową kombinację klawiszy. Esc anuluje.";
+                hotkeyBox.Text = Lang.T.HotkeyPressPrompt;
+                lblHotkeyStatus.Text = Lang.T.HotkeyRecording;
                 lblHotkeyStatus.ForeColor = Theme.SubText;
             };
             hotkeyBox.Leave += (s, e) =>
@@ -2480,14 +2815,13 @@ namespace TrayFolderMenu
                 string combo = Hotkey.Format(mods, key);
                 string error;
                 bool ok = app.TrySetHotkey(combo, out error);
-                statusOverride = ok ? "Zapisano skrót " + combo + "." : error;
+                statusOverride = ok ? string.Format(Lang.T.HotkeySaved, combo) : error;
                 statusIsError = !ok;
                 bool altGr = (mods & (Hotkey.MOD_CONTROL | Hotkey.MOD_ALT)) == (Hotkey.MOD_CONTROL | Hotkey.MOD_ALT) &&
                              (mods & Hotkey.MOD_WIN) == 0 && key >= Keys.A && key <= Keys.Z;
                 if (ok && altGr)
                 {
-                    statusOverride = "Zapisano " + combo + ", ale uwaga: Ctrl+Alt to AltGr na polskiej klawiaturze, " +
-                                     "więc ten skrót może zablokować pisanie polskich liter (ą, ę, ś…).";
+                    statusOverride = string.Format(Lang.T.HotkeySavedAltGr, combo);
                     statusIsError = true;
                 }
                 ActiveControl = btnDone;   // wyjście z pola -> Leave odświeża stan
@@ -2503,7 +2837,7 @@ namespace TrayFolderMenu
             {
                 string error;
                 bool ok = app.TrySetHotkey(AppConfig.DefaultHotkey, out error);
-                statusOverride = ok ? "Przywrócono skrót " + AppConfig.DefaultHotkey + "." : error;
+                statusOverride = ok ? string.Format(Lang.T.HotkeyRestored, AppConfig.DefaultHotkey) : error;
                 statusIsError = !ok;
                 hotkeyBox.Text = app.Config.Hotkey;
                 UpdateHotkeyStatus();
@@ -2516,7 +2850,7 @@ namespace TrayFolderMenu
                 catch (Exception ex)
                 {
                     Log.Error("autostart", ex);
-                    MessageBox.Show(this, "Nie udało się zmienić autostartu:\n" + ex.Message, "TrayFolderMenu",
+                    MessageBox.Show(this, string.Format(Lang.T.AutostartFailed, ex.Message), "TrayFolderMenu",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 RefreshState();
@@ -2526,8 +2860,8 @@ namespace TrayFolderMenu
             {
                 if (AppPaths.IsInstalledCopy)
                 {
-                    if (MessageBox.Show(this, "Odinstalować TrayFolderMenu?\n\nAplikacja zostanie zamknięta i usunięta z autostartu.",
-                            "TrayFolderMenu", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                    if (MessageBox.Show(this, Lang.T.ConfirmUninstall, "TrayFolderMenu",
+                            MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
                     Process.Start(AppPaths.CurrentExe, "/uninstall");
                 }
                 else
@@ -2539,13 +2873,14 @@ namespace TrayFolderMenu
             lnkLog.LinkClicked += (s, e) =>
             {
                 if (File.Exists(AppPaths.LogFile)) app.Launch(AppPaths.LogFile);
-                else MessageBox.Show(this, "Log jest jeszcze pusty.", "TrayFolderMenu", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                else MessageBox.Show(this, Lang.T.LogEmpty, "TrayFolderMenu", MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
             lnkConfig.LinkClicked += (s, e) =>
             {
                 Directory.CreateDirectory(AppPaths.ConfigDir);
                 app.Launch(AppPaths.ConfigDir);
             };
+            lnkGitHub.LinkClicked += (s, e) => app.Launch(Program.ProjectUrl);
 
             btnQuit.Click += (s, e) => app.ExitApp();
             btnDone.Click += (s, e) => Hide();
@@ -2560,6 +2895,18 @@ namespace TrayFolderMenu
                 UpdateHotkeyStatus();
             };
             VisibleChanged += (s, e) => { if (!Visible) app.ApplyHotkey(false); };
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                toolTip.Dispose();
+                MenuBuilder.Clear(languageMenu.Items);
+                languageMenu.Dispose();
+                if (btnLanguage.Image != null) btnLanguage.Image.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

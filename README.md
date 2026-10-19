@@ -47,6 +47,8 @@ becomes that menu. Already have a toolbar folder from Windows 10? It works as is
 - **Global hotkey** – <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> (configurable) opens the menu at the mouse cursor.
 - **Launch several items in one go** – optionally keep the menu open after a click; <kbd>Ctrl</kbd>+click inverts the behavior for
   a single click.
+- **English and Polish** – switch the language on the fly with the globe button in the settings window; by default the app
+  follows the Windows display language.
 - **Native look** – Windows 11 style menus with rounded corners, light and dark mode following the system, Explorer icons and
   Explorer-like natural sorting.
 - **No admin rights, no dependencies** – one ~100&nbsp;KB executable running on the .NET Framework 4.8 that ships with Windows.
@@ -59,7 +61,6 @@ becomes that menu. Already have a toolbar folder from Windows 10? It works as is
 
 - Windows 10 (version 1903 or later) or Windows 11
 - .NET Framework 4.8 – already part of these Windows versions
-- The user interface is currently in **Polish**; English localization is planned.
 
 ## Download
 
@@ -78,10 +79,11 @@ Prefer to compile it yourself? See [Build from source](#build-from-source).
 ## Quick start
 
 1. Run `TrayFolderMenu.exe` – the settings window opens.
-2. Click **Dodaj…** (*Add…*) and pick a folder, or drag a folder from Explorer onto the list. A tray icon appears.
-3. Optional: click **Zainstaluj dla bieżącego użytkownika** (*Install for current user*). The app copies itself to
+2. Click **Add…** and pick a folder, or drag a folder from Explorer onto the list. A tray icon appears.
+3. Optional: click **Install for current user**. The app copies itself to
    `%LOCALAPPDATA%\Programs\TrayFolderMenu`, starts at sign-in and appears in the Start menu and in *Installed apps*.
    Without installing, the executable simply runs portable.
+4. To change the language, click the globe button (**English ▾**) in the top-right corner of the settings window.
 
 > [!TIP]
 > Windows 11 may hide new tray icons under the **^** overflow arrow. Drag the icon onto the taskbar, or turn it on in
@@ -105,10 +107,11 @@ without extensions. Hidden files – including `desktop.ini` – are skipped, wh
 
 | Section | Options |
 |---|---|
-| **Foldery menu** (*Menu folders*) | Add, remove, open and enable/disable folders; drag & drop from Explorer |
-| **Zachowanie menu** (*Menu behavior*) | Keep the menu open after launching an item |
-| **Skrót klawiszowy** (*Hotkey*) | Enable/disable the global hotkey; click the field and press a new combination |
-| **Uruchamianie i instalacja** (*Startup and installation*) | Run at sign-in; install, update or uninstall |
+| **Language** (globe button, top right) | English or Polski – applied instantly |
+| **Menu folders** | Add, remove, open and enable/disable folders; drag & drop from Explorer |
+| **Menu behavior** | Keep the menu open after launching an item |
+| **Hotkey** | Enable/disable the global hotkey; click the field and press a new combination |
+| **Startup and installation** | Run at sign-in; install, update or uninstall |
 
 Settings are stored in `%APPDATA%\TrayFolderMenu\config.json` and can also be edited by hand or deployed:
 
@@ -119,9 +122,14 @@ Settings are stored in `%APPDATA%\TrayFolderMenu\config.json` and can also be ed
   ],
   "HotkeyEnabled": true,
   "Hotkey": "Ctrl+Shift+A",
-  "KeepMenuOpen": false
+  "KeepMenuOpen": false,
+  "Language": "en"
 }
 ```
+
+`Language` is `"en"` or `"pl"`; without it, the app follows the Windows display language. The configuration format, the registry
+entries and the log are the same – and in English – whatever language the interface uses, so switching languages never changes
+how settings are stored.
 
 ## Command line
 
@@ -129,7 +137,7 @@ Settings are stored in `%APPDATA%\TrayFolderMenu\config.json` and can also be ed
 |---|---|
 | *(none)* | Starts the app and opens the settings window (if already running, shows its window) |
 | `/autostart` | Starts silently in the tray – used by the sign-in entry |
-| `/install [/quiet] [/folder:"C:\Menu"]` | Installs for the current user, enables autostart and starts the app |
+| `/install [/quiet] [/folder:"C:\Menu"] [/language:en\|pl]` | Installs for the current user, enables autostart and starts the app |
 | `/uninstall [/quiet]` | Uninstalls (asks about removing settings unless `/quiet`) |
 | `/exit` | Closes the running instance |
 | `/?` | Shows help |
@@ -140,7 +148,7 @@ Settings are stored in `%APPDATA%\TrayFolderMenu\config.json` and can also be ed
 |---|---|
 | `%LOCALAPPDATA%\Programs\TrayFolderMenu\TrayFolderMenu.exe` | Installed executable |
 | `%APPDATA%\TrayFolderMenu\config.json` | Settings |
-| `%LOCALAPPDATA%\TrayFolderMenu\log.txt` | Log (rotated at 1&nbsp;MB) |
+| `%LOCALAPPDATA%\TrayFolderMenu\log.txt` | Log in English (rotated at 1&nbsp;MB) |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `TrayFolderMenu` | Run at sign-in |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TrayFolderMenu` | *Installed apps* entry |
 | Start menu → `TrayFolderMenu` | Opens the settings window |
@@ -159,7 +167,7 @@ It closes the running instance, replaces the installed executable and starts the
 
 ## Uninstalling
 
-Use **Odinstaluj…** (*Uninstall…*) in the settings window, **Settings → Apps → Installed apps → TrayFolderMenu → Uninstall**,
+Use **Uninstall…** in the settings window, **Settings → Apps → Installed apps → TrayFolderMenu → Uninstall**,
 or run `TrayFolderMenu.exe /uninstall`.
 
 ## Deployment
@@ -205,6 +213,13 @@ Change the hotkey in the settings window, or turn it off.
 
 You can, but on many keyboard layouts (Polish, German and others) <kbd>Ctrl</kbd>+<kbd>Alt</kbd> acts as <kbd>AltGr</kbd>, so the hotkey
 would block typing characters such as *ą* or *ę*. The settings window warns about it.
+</details>
+
+<details>
+<summary><b>Does the interface language affect my settings?</b></summary>
+
+No. Only the interface text changes. Configuration keys and values, registry entries, the Start menu shortcut and the log are always
+in English, so a configuration file deployed by an administrator works the same for every user.
 </details>
 
 <details>
