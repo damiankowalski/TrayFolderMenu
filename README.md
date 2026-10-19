@@ -27,11 +27,11 @@
 
 <!--
   Screenshots: save them as docs/images/menu.png and docs/images/settings.png, then remove this comment.
+  -->
 <p align="center">
   <img src="docs/images/menu.png" width="400" alt="Cascading menu opened from the tray">
   <img src="docs/images/settings.png" width="400" alt="Settings window">
 </p>
--->
 
 ## Why
 
